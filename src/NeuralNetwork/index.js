@@ -768,10 +768,10 @@ class NeuralNetwork {
     }
 
     // save the data out
-    await this.data.saveData(outputName);
+    const finalOutputs = this.data.saveData(outputName);
 
     if (typeof cb === 'function') {
-      cb();
+      cb(finalOutputs);
     }
   }
 
@@ -780,27 +780,13 @@ class NeuralNetwork {
    * @param {*} filesOrPath
    * @param {*} callback
    */
-  async loadData(filesOrPath = null, callback) {
+  async loadData(text, callback) {
 
     let loadedData;
-    if (typeof filesOrPath !== 'string') {
-      const file = filesOrPath[0];
-      const fr = new FileReader();
-      fr.readAsText(file);
-      if (file.name.includes('.json')) {
-        const temp = await file.text();
-        loadedData = JSON.parse(temp);
-      } else {
-        console.log('data must be a json object containing an array called "data" or "entries')
-      }
+    if (this.data.isJsonString(text)) {
+      loadedData = JSON.parse(text);
     } else {
-      loadedData = await fetch(filesOrPath);
-      const text = await loadedData.text();
-      if (this.data.isJsonString(text)) {
-        loadedData = JSON.parse(text);
-      } else {
-        console.log('Whoops! something went wrong. Either this kind of data is not supported yet or there is an issue with .loadData')
-      }
+      console.log('Whoops! something went wrong. Either this kind of data is not supported yet or there is an issue with .loadData')
     }
 
     // check if a data or entries property exists
@@ -817,6 +803,39 @@ class NeuralNetwork {
     }
   }
 
+  async saveLocal(name, callback) {
+
+
+    const saveResult = await this.model.save(`localstorage://${name}`);
+
+    const dataMeta = {
+      data: {
+        inputMin: this.data.data.inputMin,
+        inputMax: this.data.data.inputMax,
+        outputMin: this.data.data.outputMin,
+        outputMax: this.data.data.outputMax,
+      },
+      meta: this.data.meta
+    }
+
+    console.log({saveResult, dataMeta});
+
+    callback(saveResult, dataMeta);
+  }
+
+  async loadLocal(name, modelMetadata, callback) {
+
+    // set the metainfo
+    this.data.data.inputMax = modelMetadata.data.inputMax;
+    this.data.data.inputMin = modelMetadata.data.inputMin;
+    this.data.data.outputMax = modelMetadata.data.outputMax;
+    this.data.data.outputMin = modelMetadata.data.outputMin;
+    this.data.meta = modelMetadata.meta;
+
+    this.model = await tf.loadLayersModel(`localstorage://${name}`);
+
+    callback();
+  }
 
   /**
    * Save the model and weights
@@ -866,7 +885,13 @@ class NeuralNetwork {
       await saveBlob(JSON.stringify(dataMeta), `${modelName}_meta.json`, 'text/plain');
 
       if (typeof cb === 'function') {
-        cb();
+        const finalResult = {
+          weights: data.weightData,
+          manifest: JSON.stringify(this.weightsManifest),
+          meta: JSON.stringify(dataMeta)
+        };
+
+        cb(finalResult);
       }
     }));
   }
@@ -928,6 +953,9 @@ class NeuralNetwork {
       this.data.data.outputMax = modelMetadata.data.outputMax;
       this.data.data.outputMin = modelMetadata.data.outputMin;
       this.data.meta = modelMetadata.meta;
+
+      console.log('tf io browserFiles');
+      console.log(tf.io.browserFiles([modelJsonFile, weightsBlobFile]));
 
       this.model = await tf.loadLayersModel(tf.io.browserFiles([modelJsonFile, weightsBlobFile]));
 
